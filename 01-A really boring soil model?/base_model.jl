@@ -1,5 +1,4 @@
 using Plots
-using Plots.Measures      # for mm in margins
 using DelimitedFiles     # standard library, nothing to install
 import CairoMakie as CM  # only used for the video (namespaced to avoid clashes with Plots)
 
@@ -275,9 +274,9 @@ end
 
 function main()
     results_dir = "01_Projects/01_soil_heat_conduction_1d/results"
-    prefix      = "EXP1"
+    prefix      = "EXP1+"
 
-    res   = simulate(m = 4)     # change the number of layers here
+    res   = simulate(m = 32, dt=100)     # change the number of layers here
     plots = make_plots(res)
 
     save_data(res;     outdir = joinpath(results_dir, "data"),  prefix = prefix)
