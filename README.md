@@ -1,8 +1,6 @@
 # A Journey Through Climate Modelling
 
-# A journey through climate modelling
-
-Code, data and figures for the newsletter **[A journey through climate modelling](SUBSTACK_URL)**.
+Code, data and figures for the newsletter **[A journey through climate modelling](https://ajourneythroughclimatemodelling.substack.com)**.
 
 The goal is to learn climate modelling from scratch, in public, one simple model at a time. Each step adds a single physical ingredient, so it is always clear what changed and why.
 
