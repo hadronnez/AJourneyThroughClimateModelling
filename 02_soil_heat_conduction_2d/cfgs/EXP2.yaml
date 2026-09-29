@@ -1,0 +1,40 @@
+experiment:
+  id: "EXP2"
+
+simulation:
+  modules:
+    focus: "static"
+    thermodinamics: true
+  parameters:
+    grid:
+      L: 2                  # Column depth (m)
+      X: 1                  # Column width (m)                   
+      zlayers: 20
+      xlayers: 20
+      dt: 60
+      run_len: 728000
+    initialisation:
+      initial_conditions: "ic/EXP2_ic.nc"  
+      T_top: 298.15
+      T_bottom: 263.15
+      T_i: 263.15
+      T_top_period: 86400   # s
+      T_top_amplitude: 10   # K
+    physics:
+      k: 1.0                # Column mean thermal conductivity (W/m k)
+      rho: 1800             # Column mean density (kg/m³)
+      cp: 800             
+
+plotting:
+  total_energy: true
+  heat_fluxes: true
+  layer_temperatures: true
+  temperature_animation: true
+  language: "english"
+  style: "paper"
+  dpi: 500
+
+save:
+  output_folder: "results/"
+  plots: true
+  data: true
