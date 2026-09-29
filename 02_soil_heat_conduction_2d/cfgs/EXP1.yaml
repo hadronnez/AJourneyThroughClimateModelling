@@ -1,5 +1,7 @@
 experiment:
-  id: "EXP1"
+  id: "EXP7"
+  logging: true
+  
 
 simulation:
   modules:
@@ -9,12 +11,13 @@ simulation:
     grid:
       L: 2                  # Column depth (m)
       X: 1                  # Column width (m)                   
-      zlayers: 4
-      xlayers: 4
+      zlayers: 30
+      xlayers: 30
       dt: 60
       run_len: 728000
     initialisation:
-      initial_conditions: "ic/EXP1_ic.nc"  
+      initial_conditions_path: "ic/ic.nc"
+      synthetic_initial_conditions: "vertical_gradient"  
       T_top: 298.15
       T_bottom: 263.15
       T_i: 263.15
@@ -35,6 +38,5 @@ plotting:
   dpi: 500
 
 save:
-  output_folder: "results/"
   plots: true
   data: true

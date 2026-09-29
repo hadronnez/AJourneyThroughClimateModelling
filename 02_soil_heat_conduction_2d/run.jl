@@ -19,7 +19,7 @@ end
 
 #---------------------------------------------------------------------------------
 
-cfg = YAML.load_file(joinpath(@__DIR__, "cfgs", "EXP5.yaml"))
+cfg = YAML.load_file(joinpath(@__DIR__, "cfgs", "EXP1.yaml"))
 
 global OUT_FOLDER = joinpath(@__DIR__, "experiments", cfg["experiment"]["id"])
 global LOG = cfg["experiment"]["logging"]

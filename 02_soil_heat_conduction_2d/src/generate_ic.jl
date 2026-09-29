@@ -1,16 +1,17 @@
 using NCDatasets
 
-function generate_ic_nc(params::Dict; profile::String = "horizontal_gradient", force::Bool = false)
+function generate_ic_nc(params::Dict)
     zlayers = params["grid"]["zlayers"]
     xlayers = params["grid"]["xlayers"]
+    profile = params["initialisation"]["synthetic_initial_conditions"]
     T_i      = Float64(params["initialisation"]["T_i"])
     T_top    = Float64(get(params["initialisation"], "T_top", T_i + 5.0))
     T_bottom = Float64(get(params["initialisation"], "T_bottom", T_i - 5.0))
 
     ic_path = joinpath(OUT_FOLDER, "ic", "ic.nc")
     
-    # Load existing IC if available and not forced
-    if isfile(ic_path) && !force
+    # Load existing IC if available
+    if isfile(ic_path)
         LOG && @info "[INFO] $(now()) Loading existing initial conditions from: $ic_path"
         try
             T = NCDataset(ic_path, "r") do ds

@@ -205,11 +205,11 @@ end
 # ==========================================
 # 2. Animación MP4 2D
 # ==========================================
-#=
-function make_video(res, exp_cfg::Dict; style = "paper", dpi = 300, lang = "spanish")
+
+function make_video(res; style = "paper", dpi = 300, lang = "spanish")
     st     = get_plot_theme(style, dpi, lang)
-    outdir = exp_cfg["otput_folder"]
-    prefix = exp_cfg["id"]
+    outdir = joinpath(OUT_FOLDER, "plots")
+    prefix = ID
     mkpath(outdir)
 
     zlayers = length(res.grid.depths)
@@ -218,8 +218,8 @@ function make_video(res, exp_cfg::Dict; style = "paper", dpi = 300, lang = "span
     depths  = res.grid.depths
     widths  = res.grid.widths
 
-    dt = res.grid.ts[2] - res.grid.ts[1]
-    step = max(1, round(Int, 3600 / dt))
+    dt     = res.grid.ts[2] - res.grid.ts[1]
+    step   = max(1, round(Int, 3600 / dt))
     frames = 1:step:length(t_h)
 
     T_min, T_max = floor(minimum(res.T)), ceil(maximum(res.T))
@@ -232,8 +232,8 @@ function make_video(res, exp_cfg::Dict; style = "paper", dpi = 300, lang = "span
         xlabel    = st.labels[:video_x],
         ylabel    = st.labels[:video_z],
         title     = title_obs,
-        limits    = (0, widths[end], depths[end], 0),
-        yreversed = true
+        limits    = (0, widths[end], 0, depths[end]),  # ascending order (ymin <= ymax)
+        yreversed = true                               # flips the axis: z = 0 at the top
     )
 
     hm = CM.heatmap!(ax, widths, depths, T_obs;
@@ -251,7 +251,7 @@ function make_video(res, exp_cfg::Dict; style = "paper", dpi = 300, lang = "span
 
     println("✓ Video MP4 guardado en: ", path)
 end
-=#
+
 
 function plotting(res::NamedTuple, config::Dict)
     style = config["style"]
@@ -272,11 +272,9 @@ function plotting(res::NamedTuple, config::Dict)
         plots_dict[:soil_energy] = plot_energy(res; style = style, dpi = dpi, lang = lang)
     end
 
-#=
     if config["temperature_animation"] == true
-        make_video(res, config["experiment"]; style = style, dpi = dpi, lang = lang)
+        make_video(res; style = style, dpi = dpi, lang = lang)
     end
-=#
 
     return plots_dict
 end
