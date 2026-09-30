@@ -1,4 +1,5 @@
 using Plots
+using Dates
 import CairoMakie as CM
 
 # ==========================================
@@ -78,13 +79,11 @@ function get_plot_theme(style::String, dpi::Int, lang::String = "english")
             dpi        = dpi,
             labels     = labels
         )
-    else 
-        LOG && @error "[ERROR] Not a valid style."
     end
 end
 
 
-function plot_temperatures(res; style = "paper", dpi = 300, lang = "spanish")
+function plot_temperatures(res; style = "paper", dpi = 300, lang = "english")
     st  = get_plot_theme(style, dpi, lang)
     t_h = res.grid.ts ./ 3600.0
     
@@ -92,9 +91,7 @@ function plot_temperatures(res; style = "paper", dpi = 300, lang = "spanish")
     xlayers = length(res.grid.widths)
     total_cells = zlayers * xlayers
 
-    # Desenrollamos la matriz 3D (n_ts, zlayers, xlayers) a 2D (n_ts, zlayers * xlayers)
-    # manteniendo cada celda (z, x) independiente
-    T_all = reshape(res.T, length(t_h), total_cells)
+    T_all = permutedims(reshape(res.T, total_cells, length(t_h)))   # res.T: (z, x, time) -> (time, cells)
 
     labels = String[]
     for x in 1:xlayers
@@ -125,16 +122,16 @@ function plot_temperatures(res; style = "paper", dpi = 300, lang = "spanish")
     return p
 end
 
-function plot_heat_fluxes(res; style = "paper", dpi = 300, lang = "spanish")
+function plot_heat_fluxes(res; style = "paper", dpi = 300, lang = "english")
     st  = get_plot_theme(style, dpi, lang)
     t_h = res.grid.ts ./ 3600.0
 
     zlayers = length(res.grid.depths)
     xlayers = length(res.grid.widths)
 
-    # 1. Flujos Verticales qz: (n_ts, zlayers + 1, xlayers)
+    # 1. Flujos Verticales qz: (zlayers + 1, xlayers, n_ts)
     qz_total_interfaces = (zlayers + 1) * xlayers
-    qz_all = reshape(res.qz, length(t_h), qz_total_interfaces)
+    qz_all = permutedims(reshape(res.qz, qz_total_interfaces, length(t_h)))
 
     labels_qz = String[]
     for x in 1:xlayers
@@ -157,10 +154,10 @@ function plot_heat_fluxes(res; style = "paper", dpi = 300, lang = "spanish")
         dpi       = dpi
     )
 
-    # 2. Flujos Horizontales qx: (n_ts, zlayers, xlayers + 1)
+    # 2. Flujos Horizontales qx: (zlayers, xlayers + 1, n_ts)
     if xlayers > 1
         qx_total_interfaces = zlayers * (xlayers + 1)
-        qx_all = reshape(res.qx, length(t_h), qx_total_interfaces)
+        qx_all = permutedims(reshape(res.qx, qx_total_interfaces, length(t_h)))
 
         labels_qx = String[]
         for x in 1:(xlayers + 1)
@@ -188,7 +185,7 @@ function plot_heat_fluxes(res; style = "paper", dpi = 300, lang = "spanish")
     end
 end
 
-function plot_energy(res; style = "paper", dpi = 300, lang = "spanish")
+function plot_energy(res; style = "paper", dpi = 300, lang = "english")
     st  = get_plot_theme(style, dpi, lang)
     t_h = res.grid.ts ./ 3600.0
 
@@ -206,27 +203,51 @@ end
 # 2. Animación MP4 2D
 # ==========================================
 
-function make_video(res; style = "paper", dpi = 300, lang = "spanish")
+"""
+Remuestrea una malla NO uniforme (bordes `edges`, ascendentes) a `n_fine` píxeles
+uniformes. Devuelve (lo, hi, idx) donde idx[k] es la celda que cubre el píxel k.
+Así el heatmap es una imagen regular (siempre bien renderizada) pero los datos
+siguen siendo constantes por celda, con el grosor real de cada capa.
+"""
+function fine_index_map(edges::AbstractVector, n_fine::Int)
+    lo, hi = first(edges), last(edges)
+    n      = length(edges) - 1
+    pix    = range(lo, hi; length = n_fine + 1)
+    mid    = (pix[1:end-1] .+ pix[2:end]) ./ 2
+    idx    = [clamp(searchsortedlast(edges, m), 1, n) for m in mid]
+    return lo, hi, idx
+end
+
+function make_video(res, out_folder::AbstractString, id::AbstractString; style = "paper", dpi = 300, lang = "english")
     st     = get_plot_theme(style, dpi, lang)
-    outdir = joinpath(OUT_FOLDER, "plots")
-    prefix = ID
+    outdir = joinpath(out_folder, "plots")
+    prefix = id
     mkpath(outdir)
 
-    t_h     = res.grid.ts ./ 3600.0
-    zlevels = res.grid.zlevels
+    # 1. Tiempos reales desde res.grid.ts
+    ts  = res.grid.ts
+    t_h = ts ./ 3600.0
+
+    # 2. Geometría y bordes acumulados reales
     widths  = res.grid.widths
     xlayers = length(widths)
     zlayers = length(res.grid.depths)
 
-    xedges = [0.0; widths]          # bordes de celda en x (xlayers + 1)
+    xedges = [0.0; cumsum(collect(Float64, widths))]
+    zedges = collect(Float64, res.grid.zlevels)
 
-    dt     = res.grid.ts[2] - res.grid.ts[1]
-    step   = max(1, round(Int, 3600 / dt))
-    frames = 1:step:length(t_h)
+    # 3. Cálculo de pasos y frames a partir de ts
+    n_saves = size(res.T, 3)
+    dt_save = length(ts) > 1 ? (ts[2] - ts[1]) : 1.0
+    step    = max(1, round(Int, 3600 / dt_save))
+    frames  = 1:step:n_saves
 
     T_min, T_max = floor(minimum(res.T)), ceil(maximum(res.T))
 
-    T_obs     = CM.Observable(zeros(xlayers, zlayers))
+    # 4. Formato de matriz (z, x) -> permutedims a (x, z) para Makie heatmap
+    frame_matrix(i) = permutedims(res.T[:, :, i], (2, 1))
+
+    T_obs     = CM.Observable(frame_matrix(first(frames)))
     title_obs = CM.Observable("")
 
     fig = CM.Figure(size = (600, 700), fontsize = 14)
@@ -234,48 +255,48 @@ function make_video(res; style = "paper", dpi = 300, lang = "spanish")
         xlabel    = st.labels[:video_x],
         ylabel    = st.labels[:video_z],
         title     = title_obs,
-        limits    = (0, xedges[end], 0, zlevels[end]),
+        limits    = (xedges[1], xedges[end], zedges[1], zedges[end]),
         yreversed = true
     )
 
-    hm = CM.heatmap!(ax, xedges, zlevels, T_obs;
-        colormap   = :thermal,
-        colorrange = (T_min, T_max)
+    # 5. Dibujo directo sobre bordes reales
+    hm = CM.heatmap!(ax, xedges, zedges, T_obs;
+        colormap    = :thermal,
+        colorrange  = (T_min, T_max),
+        interpolate = false
     )
     CM.Colorbar(fig[1, 2], hm; label = st.labels[:temp])
 
     path = joinpath(outdir, "$(prefix)_temperature_animation.mp4")
 
     CM.record(fig, path, frames; framerate = 12) do i
-        T_obs[]     = permutedims(res.T[i, :, :], (2, 1))
+        T_obs[]     = frame_matrix(i)
         title_obs[] = "$(st.labels[:video_title])$(round(t_h[i]; digits = 1)) h"
     end
 
-    println("✓ Video MP4 guardado en: ", path)
+    @info "[INFO] MP4 animation saved to: $path"
 end
 
-
-function plotting(res::NamedTuple, config::Dict)
-    style = config["style"]
-    dpi   = config["dpi"]
-    lang  = config["language"]
+function plotting(res::NamedTuple, p, experiment)
+    (; style, dpi, language) = p
 
     plots_dict = Dict{Symbol, Any}()
 
-    if config["layer_temperatures"] == true
-        plots_dict[:soil_temperatures] = plot_temperatures(res; style = style, dpi = dpi, lang = lang)
+    if p.layer_temperatures
+        plots_dict[:soil_temperatures] = plot_temperatures(res; style = style, dpi = dpi, lang = language)
     end
 
-    if config["heat_fluxes"] == true
-        plots_dict[:soil_heat_fluxes] = plot_heat_fluxes(res; style = style, dpi = dpi, lang = lang)
+    if p.heat_fluxes
+        plots_dict[:soil_heat_fluxes] = plot_heat_fluxes(res; style = style, dpi = dpi, lang = language)
     end
 
-    if config["total_energy"] == true
-        plots_dict[:soil_energy] = plot_energy(res; style = style, dpi = dpi, lang = lang)
+    if p.total_energy
+        plots_dict[:soil_energy] = plot_energy(res; style = style, dpi = dpi, lang = language)
     end
 
-    if config["temperature_animation"] == true
-        make_video(res; style = style, dpi = dpi, lang = lang)
+    if p.temperature_animation
+        make_video(res, experiment.out_folder, experiment.id;
+                   style = style, dpi = dpi, lang = language)
     end
 
     return plots_dict

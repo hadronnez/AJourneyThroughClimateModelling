@@ -1,17 +1,22 @@
 using Plots
 using NCDatasets
+using Dates
 
 """
-    save(res::NamedTuple, plots::Dict, save_config::Dict)
+    save(res::NamedTuple, plots::Dict, scfg, experiment)
 
 Saves simulation results to NetCDF format and plots to PNG images.
+`scfg` is `cfg.save`; `experiment` is `cfg.experiment` (provides `out_folder` and `id`).
+Arrays in `res` are time-last: T (z, x, time), qz (z+1, x, time), qx (z, x+1, time).
 """
-function save(res::NamedTuple, plots::Dict, save_config::Dict)
-    
+function save(res::NamedTuple, plots::Dict, scfg, experiment)
+    out_folder = experiment.out_folder
+    id         = experiment.id
+
     # Save data to NetCDF
-    if get(save_config, "data", false)
-        LOG && @info "[INFO] $(now()) Saving data to NetCDF format..."
-        nc_path = joinpath(OUT_FOLDER, "data", "$(ID)_data.nc")
+    if scfg.data
+        @info "[INFO] $(now()) Saving data to NetCDF format..."
+        nc_path = joinpath(out_folder, "data", "$(id)_data.nc")
         mkpath(dirname(nc_path))
         isfile(nc_path) && rm(nc_path)
 
@@ -31,11 +36,11 @@ function save(res::NamedTuple, plots::Dict, save_config::Dict)
                 v_depth[:] = res.grid.depths
                 v_width[:] = res.grid.widths
 
-                v_T = defVar(ds, "T", Float64, ("time", "z", "x"), 
+                v_T = defVar(ds, "T", Float64, ("z", "x", "time"), 
                              attrib = Dict("units" => "K", "long_name" => "Soil Temperature Field"))
-                v_qz = defVar(ds, "qz", Float64, ("time", "qz_interfaces", "x"), 
+                v_qz = defVar(ds, "qz", Float64, ("qz_interfaces", "x", "time"), 
                               attrib = Dict("units" => "W/m^2", "long_name" => "Vertical Heat Flux"))
-                v_qx = defVar(ds, "qx", Float64, ("time", "z", "qx_interfaces"), 
+                v_qx = defVar(ds, "qx", Float64, ("z", "qx_interfaces", "time"), 
                               attrib = Dict("units" => "W/m^2", "long_name" => "Horizontal Heat Flux"))
                 v_E = defVar(ds, "soil_energy", Float64, ("time",), 
                              attrib = Dict("units" => "J", "long_name" => "Total Soil Heat Energy"))
@@ -51,28 +56,28 @@ function save(res::NamedTuple, plots::Dict, save_config::Dict)
                 v_Ttop[:]     = res.T_top
                 v_Tbot[:]     = res.T_bottom
             end
-            LOG && @info "[INFO] $(now()) Data successfully saved to: $nc_path"
+            @info "[INFO] $(now()) Data successfully saved to: $nc_path"
         catch e
-            LOG && @error "[ERROR] $(now()) Failed to save data: $e"
+            @error "[ERROR] $(now()) Failed to save data: $e"
             rethrow(e)
         end
     end
 
     # Save plots to PNG
-    if get(save_config, "plots", false) && !isempty(plots)
-        LOG && @info "[INFO] $(now()) Saving plots to PNG format..."
-        plots_dir = joinpath(OUT_FOLDER, "plots")
+    if scfg.plots && !isempty(plots)
+        @info "[INFO] $(now()) Saving plots to PNG format..."
+        plots_dir = joinpath(out_folder, "plots")
         
         try
             for (name, p) in plots
-                filepath = joinpath(plots_dir, "$(ID)_$(name).png")
+                filepath = joinpath(plots_dir, "$(id)_$(name).png")
                 mkpath(dirname(filepath))
                 savefig(p, filepath)
-                LOG && @info "[INFO] $(now()) Saved plot: $name"
+                @info "[INFO] $(now()) Saved plot: $name"
             end
-            LOG && @info "[INFO] $(now()) All plots successfully saved to: $plots_dir"
+            @info "[INFO] $(now()) All plots successfully saved to: $plots_dir"
         catch e
-            LOG && @error "[ERROR] $(now()) Failed to save plots: $e"
+            @error "[ERROR] $(now()) Failed to save plots: $e"
             rethrow(e)
         end
     end

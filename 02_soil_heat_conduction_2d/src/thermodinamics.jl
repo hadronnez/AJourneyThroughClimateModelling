@@ -1,107 +1,110 @@
 include("generate_ic.jl")
 
-function simulation(config::Dict)
-    LOG && @info "[INFO] $(now()) Initializing simulation..."
+# `grid` and `phys` are NamedTuples built in run.jl / build_physics (no Grid/Physics structs).
+# Array layout: time is always the LAST dimension in histories (z, x, time).
 
-    mods = config["modules"]
-    grid = config["grid"]
-    init = config["initialisation"]
-    physics = config["physics"]
-    vcoords = config["vertical_coordinates"]
+"""
+    build_physics(p, grid) -> NamedTuple
 
-    # Grid setup
-    LOG && @info "[INFO] $(now()) Setting up computational grid..."
-    dt = grid["dt"]
-    run_len = grid["run_len"]
-    n_ts = Int(round(run_len / dt))
-    ts   = collect(1:n_ts) .* dt
+Extends the physical parameters (`cfg.physics`) with the per-layer quantities
+needed by `step!` and `record!`, for a 2D cell of size dz[i] × dx (per unit length in y):
 
-    zlayers = grid["zlayers"]
-    column_length = grid["L"]
-    r       = vcoords["r"]
-    dz1     = column_length * (r - 1) / (r^zlayers - 1)
-    dz      = dz1 .* r .^ (0:zlayers-1)
-    zlevels = [0.0; cumsum(dz)]
-    depths  = (zlevels[1:end-1] .+ zlevels[2:end]) ./ 2
-    dzc     = diff(depths)                    # distancias entre centros, longitud zlayers-1
+- `C`         : heat capacity of each layer's cell [J/K]   (vector, length zlayers)
+- `dt_over_C` : dt / C                                      (vector, length zlayers)
+"""
+function build_physics(p, grid)
+    C = (p.rho * p.cp) .* grid.dz .* grid.dx
+    return (K = p.k, ρcp = p.rho * p.cp, k = p.k, rho = p.rho, cp = p.cp,
+            C = C, dt_over_C = grid.dt ./ C)
+end
 
-    xlayers = grid["xlayers"]
-    dx = grid["X"]   
-    widths = collect(1:xlayers) .* dx
-    
-    LOG && @info "  - Grid dimensions: $(zlayers)×$(xlayers) cells"
-    LOG && @info "  - Time steps: $n_ts (Δt = $dt s)"
-    LOG && @info "  - Grid spacing: Δz = $(dz[1]) … $(dz[end]) m, Δx = $dx m"
+"""
+    stability_limit(grid, phys) -> dt_max [s]
 
-    # Physical parameters
-    if mods["thermodinamics"] == true 
-        K  = physics["k"]       
-        C = physics["rho"] * physics["cp"] .* dz .* dx      
-        LOG && @info "[INFO] $(now()) Loading thermal parameters..."
-        LOG && @info "  - Thermal conductivity: $K W/(m·K)"
-        LOG && @info "  - Volumetric heat capacity: $C J/(m²·K)"
+Estimación del paso de tiempo máximo estable para el esquema explícito.
+"""
+function stability_limit(grid, phys)
+    dup  = [grid.dz[1] / 2; grid.dzc]
+    ddn  = [grid.dzc; grid.dz[end] / 2]
+    coef = (phys.K / phys.ρcp) .* (1 ./ (grid.dz .* dup) .+
+                                   1 ./ (grid.dz .* ddn) .+
+                                   2 / grid.dx^2)
+    return 1 / maximum(coef)
+end
+
+"""
+    boundary_forcing(init, grid, focus = nothing) -> (T_top, T_bottom)
+
+Boundary temperature series of length `grid.n_ts`, at times t_i = i·dt
+(the same times used for `res.grid.ts` in run.jl).
+
+- `init`  : `cfg.initialisation`
+- `focus` : `cfg.components.dry.focus` (`:static` or `:dynamic`). If omitted, it is
+            inferred: `:dynamic` when both `T_top_amplitude` and `T_top_period` are set.
+"""
+function boundary_forcing(init, grid, focus::Union{Symbol,Nothing} = nothing)
+    A, P = init.T_top_amplitude, init.T_top_period
+    focus === nothing && (focus = (isnan(A) || isnan(P)) ? :static : :dynamic)
+
+    if focus === :static
+        top = fill(init.T_top, grid.n_ts)
+    elseif focus === :dynamic
+        (isnan(A) || isnan(P)) &&
+            error("focus = dynamic requires initialisation.T_top_amplitude and T_top_period")
+        P > 0 || error("initialisation.T_top_period must be > 0 (got $P)")
+        ts  = (1:grid.n_ts) .* grid.dt
+        top = @. init.T_top + A * sin(2π * ts / P - π / 2)
+    else
+        error("Unknown dry_thermodinamics focus: $focus")
     end
 
-    if mods["thermodinamics"] == true
-        # Boundary conditions
-        LOG && @info "[INFO] $(now()) Setting up boundary conditions..."
-        if mods["focus"] == "static"
-            T_top_history = ones(n_ts) * init["T_top"]
-            T_bottom_history = ones(n_ts) * init["T_bottom"]
-            LOG && @info "  - Static boundary conditions"
-            LOG && @info "  - T_top = $(init["T_top"]) K"
-            LOG && @info "  - T_bottom = $(init["T_bottom"]) K"
-            
-        elseif mods["focus"] == "dynamic"
-            T_top_history = @. init["T_top"] + init["T_top_amplitude"] * sin(2π * ts / init["T_top_period"] - π / 2)
-            T_bottom_history = ones(n_ts) * init["T_bottom"]
-            LOG && @info "  - Dynamic boundary conditions (sinusoidal top)"
-            LOG && @info "  - T_top amplitude: $(init["T_top_amplitude"]) K"
-            LOG && @info "  - T_top period: $(init["T_top_period"]) s"
+    return (T_top = top, T_bottom = fill(init.T_bottom, grid.n_ts))
+end
+
+"""
+    init_state(cfg, grid) -> (T, qz, qx)
+
+Initial state; T comes from the synthetic profile / `ic.nc` (see generate_ic.jl).
+"""
+function init_state(cfg, grid)
+    T  = generate_ic_nc(cfg.grid, cfg.initialisation, cfg.experiment.out_folder)
+    qz = zeros(grid.zlayers + 1, grid.xlayers)
+    qx = zeros(grid.zlayers, grid.xlayers + 1)
+    return (T = T, qz = qz, qx = qx)
+end
+
+function init_history(grid, n_out::Int)
+    return (T           = zeros(grid.zlayers, grid.xlayers, n_out),
+            qz          = zeros(grid.zlayers + 1, grid.xlayers, n_out),
+            qx          = zeros(grid.zlayers, grid.xlayers + 1, n_out),
+            soil_energy = zeros(n_out))
+end
+
+function step!(state, grid, phys, T_top::Float64, T_bot::Float64)
+    (; T, qz, qx) = state
+    (; K, dt_over_C) = phys
+    (; zlayers, xlayers, dz, dzc, dx) = grid
+
+    @views begin
+        qz[1, :]         .= K .* (T_top .- T[1, :]) ./ (dz[1] / 2)
+        qz[2:zlayers, :] .= K .* (T[1:zlayers-1, :] .- T[2:zlayers, :]) ./ dzc
+        qz[zlayers+1, :] .= K .* (T[zlayers, :] .- T_bot) ./ (dz[end] / 2)
+        if xlayers > 1
+            qx[:, 2:xlayers] .= K .* (T[:, 1:xlayers-1] .- T[:, 2:xlayers]) ./ dx
         end
 
-        # Initial conditions
-        T = generate_ic_nc(grid, init)
-        qz = zeros(zlayers + 1, xlayers)
-        qx = zeros(zlayers, xlayers + 1) 
-
-        T_history           = zeros(n_ts, zlayers, xlayers)
-        qz_history          = zeros(n_ts, zlayers + 1, xlayers)
-        qx_history          = zeros(n_ts, zlayers, xlayers + 1)
-        soil_energy_history = zeros(n_ts)
-
-        # Time stepping
-        LOG && @info "[INFO] $(now()) Starting time integration loop..."
-        for i in 1:n_ts
-            @views qz[1, :]         .= K .* (T_top_history[i] .- T[1, :]) ./ (dz[1] / 2)
-            @views qz[2:zlayers, :] .= K .* (T[1:zlayers-1, :] .- T[2:zlayers, :]) ./ dzc
-            @views qz[zlayers+1, :] .= K .* (T[zlayers, :] .- T_bottom_history[i]) ./ (dz[end] / 2)
-            
-            if xlayers > 1
-                @views qx[:, 2:xlayers] .= K .* (T[:, 1:xlayers-1] .- T[:, 2:xlayers]) ./ dx
-            end
-
-            @views T .+= (dt ./ C) .* (
-                (qz[1:zlayers, :] .- qz[2:zlayers+1, :]) .* dx .+
-                (qx[:, 1:xlayers] .- qx[:, 2:xlayers+1]) .* dz
-            )
-
-            T_history[i, :, :]  .= T
-            qz_history[i, :, :] .= qz
-            qx_history[i, :, :] .= qx
-            soil_energy_history[i] = sum(C .* T)            
-        end
-        
-        LOG && @info "[INFO] $(now()) Simulation completed successfully"
-    end
-
-    return (
-            T_top       = T_top_history,
-            T_bottom    = T_bottom_history,
-            T           = T_history,
-            qz          = qz_history,
-            qx          = qx_history,
-            soil_energy = soil_energy_history,
-            grid = (depths = depths, zlevels = zlevels, widths = widths, ts = ts)
+        T .+= dt_over_C .* (
+            (qz[1:zlayers, :] .- qz[2:zlayers+1, :]) .* dx .+
+            (qx[:, 1:xlayers] .- qx[:, 2:xlayers+1]) .* dz
         )
+    end
+    return nothing
+end
+
+function record!(hist, state, phys, k::Int)
+    hist.T[:, :, k]  .= state.T
+    hist.qz[:, :, k] .= state.qz
+    hist.qx[:, :, k] .= state.qx
+    hist.soil_energy[k] = sum(phys.C .* state.T)
+    return nothing
 end
