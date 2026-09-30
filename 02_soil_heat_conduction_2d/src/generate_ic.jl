@@ -1,12 +1,12 @@
 using NCDatasets
 
-function generate_ic_nc(params::Dict)
-    zlayers = params["grid"]["zlayers"]
-    xlayers = params["grid"]["xlayers"]
-    profile = params["initialisation"]["synthetic_initial_conditions"]
-    T_i      = Float64(params["initialisation"]["T_i"])
-    T_top    = Float64(get(params["initialisation"], "T_top", T_i + 5.0))
-    T_bottom = Float64(get(params["initialisation"], "T_bottom", T_i - 5.0))
+function generate_ic_nc(config_grid::Dict, config_init::Dict)
+    zlayers = config_grid["zlayers"]
+    xlayers = config_grid["xlayers"]
+    profile = config_init["synthetic_initial_conditions"]
+    T_i      = Float64(config_init["T_i"])
+    T_top    = Float64(get(config_init, "T_top", T_i + 5.0))
+    T_bottom = Float64(get(config_init, "T_bottom", T_i - 5.0))
 
     ic_path = joinpath(OUT_FOLDER, "ic", "ic.nc")
     

@@ -212,11 +212,13 @@ function make_video(res; style = "paper", dpi = 300, lang = "spanish")
     prefix = ID
     mkpath(outdir)
 
-    zlayers = length(res.grid.depths)
-    xlayers = length(res.grid.widths)
     t_h     = res.grid.ts ./ 3600.0
-    depths  = res.grid.depths
+    zlevels = res.grid.zlevels
     widths  = res.grid.widths
+    xlayers = length(widths)
+    zlayers = length(res.grid.depths)
+
+    xedges = [0.0; widths]          # bordes de celda en x (xlayers + 1)
 
     dt     = res.grid.ts[2] - res.grid.ts[1]
     step   = max(1, round(Int, 3600 / dt))
@@ -232,11 +234,11 @@ function make_video(res; style = "paper", dpi = 300, lang = "spanish")
         xlabel    = st.labels[:video_x],
         ylabel    = st.labels[:video_z],
         title     = title_obs,
-        limits    = (0, widths[end], 0, depths[end]),  # ascending order (ymin <= ymax)
-        yreversed = true                               # flips the axis: z = 0 at the top
+        limits    = (0, xedges[end], 0, zlevels[end]),
+        yreversed = true
     )
 
-    hm = CM.heatmap!(ax, widths, depths, T_obs;
+    hm = CM.heatmap!(ax, xedges, zlevels, T_obs;
         colormap   = :thermal,
         colorrange = (T_min, T_max)
     )

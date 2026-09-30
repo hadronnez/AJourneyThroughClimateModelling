@@ -1,0 +1,42 @@
+experiment:
+  id: "EXP4"
+  logging: true
+  
+simulation:
+  modules:
+    focus: "static"
+    thermodinamics: true
+  grid:
+    L: 2                  # Column depth (m)
+    X: 1                  # Column width (m)                   
+    zlayers: 15
+    xlayers: 15
+    dt: 10
+    run_len: 728000
+  vertical_coordinates:
+    r: 1.01
+  initialisation:
+    initial_conditions_path: "ic/ic.nc"
+    synthetic_initial_conditions: "horizontal_gradient"  
+    T_top: 298.15
+    T_bottom: 263.15
+    T_i: 263.15
+    T_top_period: 86400   # s
+    T_top_amplitude: 10   # K
+  physics:
+    k: 1.0               # Column mean thermal conductivity (W/m k)
+    rho: 1800             # Column mean density (kg/m³)
+    cp: 800             
+
+plotting:
+  total_energy: true
+  heat_fluxes: false
+  layer_temperatures: false
+  temperature_animation: true
+  language: "english"
+  style: "paper"
+  dpi: 500
+
+save:
+  plots: true
+  data: true
