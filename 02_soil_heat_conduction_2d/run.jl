@@ -75,12 +75,15 @@ end
 
 # ------------
 
-ROOT = @__DIR__   
-                          
-cfg = load_config(joinpath(ROOT, "cfgs", "EXP1.yaml"); root = ROOT)
-out = cfg.experiment.out_folder                   
+const ROOT = @__DIR__
 
-mkpath(joinpath(out, "log"))
+cfg0 = load_config(joinpath(ROOT, "cfgs", "EXP4.yaml"))
+out  = joinpath(ROOT, "experiments", cfg0.experiment.id)
+cfg = merge(cfg0, (; experiment = merge(cfg0.experiment, (; out))))
+for sub in ("log", "data", "ic", "plots")
+    mkpath(joinpath(out, sub))
+end
+
 logger_io = init_logger(joinpath(out, "log", "run.log"))
 
 try
