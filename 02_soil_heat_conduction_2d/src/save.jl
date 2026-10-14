@@ -1,19 +1,12 @@
 using Plots
 using NCDatasets
 using Dates
+using YAML
 
-"""
-    save(res::NamedTuple, plots::Dict, scfg, experiment)
-
-Saves simulation results to NetCDF format and plots to PNG images.
-`scfg` is `cfg.save`; `experiment` is `cfg.experiment` (provides `out_folder` and `id`).
-Arrays in `res` are time-last: T (z, x, time), qz (z+1, x, time), qx (z, x+1, time).
-"""
-function save(res::NamedTuple, plots::Dict, scfg, experiment)
+function save(res::SimulationResults, plots::Dict, scfg, experiment)
     out_folder = experiment.out_folder
     id         = experiment.id
 
-    # Save data to NetCDF
     if scfg.data
         @info "[INFO] $(now()) Saving data to NetCDF format..."
         nc_path = joinpath(out_folder, "data", "$(id)_data.nc")
@@ -63,7 +56,6 @@ function save(res::NamedTuple, plots::Dict, scfg, experiment)
         end
     end
 
-    # Save plots to PNG
     if scfg.plots && !isempty(plots)
         @info "[INFO] $(now()) Saving plots to PNG format..."
         plots_dir = joinpath(out_folder, "plots")
@@ -82,3 +74,16 @@ function save(res::NamedTuple, plots::Dict, scfg, experiment)
         end
     end
 end
+
+
+function save(cfg::Config)
+    @info "[INFO] $(now()) Saving experiment configuration..."
+    path = joinpath(cfg.experiment.out_folder, "$(cfg.experiment.id)_config.yaml")
+    sections = Dict(string(f) => _to_yaml(getfield(cfg, f)) for f in fieldnames(Config) if f !== :runtime)
+    YAML.write_file(path, sections)
+    @info "[INFO] $(now()) Configuration successfully saved to: $path"
+end
+
+_to_yaml(x::NamedTuple) = Dict(string(k) => _to_yaml(v) for (k, v) in pairs(x))
+_to_yaml(x::Symbol) = string(x)
+_to_yaml(x) = x

@@ -1,97 +1,66 @@
 using Plots
 using Dates
 import CairoMakie as CM
+using YAML
 
-# ==========================================
-# 0. Estilos e Idiomas
-# ==========================================
-const LABELS = Dict(
-    "spanish" => Dict(
-        :cell => "Celda",
-        :time => "Tiempo [h]",
-        :temp => "Temperatura [K]",
-        :temp_title => "Evolución Temporal de Temperatura (Todas las Celdas Z x X)",
-        :top_border => "Borde Sup. (T_top)",
-        :bot_border => "Borde Inf. (T_bot)",
-        :qz_title => "Flujos Verticales qz (Todas las Interfaces)",
-        :qx_title => "Flujos Horizontales qx (Todas las Interfaces)",
-        :energy_label => "Energía Suelo",
-        :energy_title => "Energía Acumulada",
-        :energy_unit => "Energía [J]",
-        :video_x => "Ancho X [m]",
-        :video_z => "Profundidad Z [m]",
-        :video_title => "Campo 2D de Temperatura · t = "
-    ),
-    "english" => Dict(
-        :cell => "Cell",
-        :time => "Time [h]",
-        :temp => "Temperature [K]",
-        :temp_title => "Temporal Temperature Evolution (All Z x X Cells)",
-        :top_border => "Top Boundary (T_top)",
-        :bot_border => "Bottom Boundary (T_bot)",
-        :qz_title => "Vertical Heat Fluxes qz (All Interfaces)",
-        :qx_title => "Horizontal Heat Fluxes qx (All Interfaces)",
-        :energy_label => "Soil Energy",
-        :energy_title => "Accumulated Energy",
-        :energy_unit => "Energy [J]",
-        :video_x => "Width X [m]",
-        :video_z => "Depth Z [m]",
-        :video_title => "2D Temperature Field · t = "
-    ),
-    "catalan" => Dict(
-        :cell => "Cel·la",
-        :time => "Temps [h]",
-        :temp => "Temperatura [K]",
-        :temp_title => "Evolució Temporal de Temperatura (Totes les Cel·les Z x X)",
-        :top_border => "Llímit Sup. (T_top)",
-        :bot_border => "Llímit Inf. (T_bot)",
-        :qz_title => "Fluxos Verticals qz (Totes les Interfícies)",
-        :qx_title => "Fluxos Horitzontals qx (Totes les Interfícies)",
-        :energy_label => "Energia Sòl",
-        :energy_title => "Energia Acumulada",
-        :energy_unit => "Energia [J]",
-        :video_x => "Amplada X [m]",
-        :video_z => "Profunditat Z [m]",
-        :video_title => "Camp 2D de Temperatura · t = "
+
+function _load_labels(filepath::String)
+    raw_data = YAML.load_file(filepath)
+    Dict(
+        lang => Dict(Symbol(k) => v for (k, v) in inner_dict)
+        for (lang, inner_dict) in raw_data
     )
-)
+end
 
-function get_plot_theme(style::String, dpi::Int, lang::String = "english")
-    labels = LABELS[lang]
+function _load_styles(filepath::String)
+    raw_data = YAML.load_file(filepath)
+    Dict(
+        style_name => Dict(Symbol(k) => v for (k, v) in style_dict)
+        for (style_name, style_dict) in raw_data
+    )
+end
 
-    if style == "paper"
-        return (
-            titlefont  = font(10, "DejaVu Sans"),
-            guidefont  = font(9, "DejaVu Sans"),
-            tickfont   = font(8, "DejaVu Sans"),
-            legendfont = font(7, "DejaVu Sans"),
-            linewidth  = 1.5,
-            dpi        = dpi,
-            labels     = labels
-        )
-    elseif style == "presentation"
-        return (
-            titlefont  = font(14, "DejaVu Sans Bold"),
-            guidefont  = font(12, "DejaVu Sans"),
-            tickfont   = font(10, "DejaVu Sans"),
-            legendfont = font(9, "DejaVu Sans"),
-            linewidth  = 2.5,
-            dpi        = dpi,
-            labels     = labels
-        )
+const LABELS = _load_labels(joinpath(dirname(@__DIR__), "cfgs", "labels.yaml"))
+const STYLES = _load_styles(joinpath(dirname(@__DIR__), "cfgs", "styles.yaml"))
+
+
+
+function plotting(res::SimulationResults, p, experiment)
+    (; style, dpi, language) = p
+
+    plots_dict = Dict{Symbol, Any}()
+
+    if p.layer_temperatures
+        plots_dict[:soil_temperatures] = plot_temperatures(res; style = style, dpi = dpi, lang = language)
     end
+
+    if p.heat_fluxes
+        plots_dict[:soil_heat_fluxes] = plot_heat_fluxes(res; style = style, dpi = dpi, lang = language)
+    end
+
+    if p.total_energy
+        plots_dict[:soil_energy] = plot_energy(res; style = style, dpi = dpi, lang = language)
+    end
+
+    if p.temperature_animation
+        make_video(res, experiment.out_folder, experiment.id;
+                   style = style, dpi = dpi, lang = language)
+    end
+
+    return plots_dict
 end
 
 
-function plot_temperatures(res; style = "paper", dpi = 300, lang = "english")
-    st  = get_plot_theme(style, dpi, lang)
+
+function plot_temperatures(res::SimulationResults; style, dpi, lang)
+    st  = _get_plot_theme(style, dpi, lang)
     t_h = res.grid.ts ./ 3600.0
     
     zlayers = length(res.grid.depths)
     xlayers = length(res.grid.widths)
     total_cells = zlayers * xlayers
 
-    T_all = permutedims(reshape(res.T, total_cells, length(t_h)))   # res.T: (z, x, time) -> (time, cells)
+    T_all = permutedims(reshape(res.T, total_cells, length(t_h)))
 
     labels = String[]
     for x in 1:xlayers
@@ -122,14 +91,13 @@ function plot_temperatures(res; style = "paper", dpi = 300, lang = "english")
     return p
 end
 
-function plot_heat_fluxes(res; style = "paper", dpi = 300, lang = "english")
-    st  = get_plot_theme(style, dpi, lang)
+function plot_heat_fluxes(res::SimulationResults; style, dpi, lang)
+    st  = _get_plot_theme(style, dpi, lang)
     t_h = res.grid.ts ./ 3600.0
 
     zlayers = length(res.grid.depths)
     xlayers = length(res.grid.widths)
 
-    # 1. Flujos Verticales qz: (zlayers + 1, xlayers, n_ts)
     qz_total_interfaces = (zlayers + 1) * xlayers
     qz_all = permutedims(reshape(res.qz, qz_total_interfaces, length(t_h)))
 
@@ -154,7 +122,6 @@ function plot_heat_fluxes(res; style = "paper", dpi = 300, lang = "english")
         dpi       = dpi
     )
 
-    # 2. Flujos Horizontales qx: (zlayers, xlayers + 1, n_ts)
     if xlayers > 1
         qx_total_interfaces = zlayers * (xlayers + 1)
         qx_all = permutedims(reshape(res.qx, qx_total_interfaces, length(t_h)))
@@ -185,8 +152,8 @@ function plot_heat_fluxes(res; style = "paper", dpi = 300, lang = "english")
     end
 end
 
-function plot_energy(res; style = "paper", dpi = 300, lang = "english")
-    st  = get_plot_theme(style, dpi, lang)
+function plot_energy(res::SimulationResults; style, dpi, lang)
+    st  = _get_plot_theme(style, dpi, lang)
     t_h = res.grid.ts ./ 3600.0
 
     return plot(
@@ -199,36 +166,15 @@ function plot_energy(res; style = "paper", dpi = 300, lang = "english")
     )
 end
 
-# ==========================================
-# 2. Animación MP4 2D
-# ==========================================
-
-"""
-Remuestrea una malla NO uniforme (bordes `edges`, ascendentes) a `n_fine` píxeles
-uniformes. Devuelve (lo, hi, idx) donde idx[k] es la celda que cubre el píxel k.
-Así el heatmap es una imagen regular (siempre bien renderizada) pero los datos
-siguen siendo constantes por celda, con el grosor real de cada capa.
-"""
-function fine_index_map(edges::AbstractVector, n_fine::Int)
-    lo, hi = first(edges), last(edges)
-    n      = length(edges) - 1
-    pix    = range(lo, hi; length = n_fine + 1)
-    mid    = (pix[1:end-1] .+ pix[2:end]) ./ 2
-    idx    = [clamp(searchsortedlast(edges, m), 1, n) for m in mid]
-    return lo, hi, idx
-end
-
-function make_video(res, out_folder::AbstractString, id::AbstractString; style = "paper", dpi = 300, lang = "english")
-    st     = get_plot_theme(style, dpi, lang)
+function make_video(res::SimulationResults, out_folder::AbstractString, id::AbstractString; style, dpi, lang)
+    st     = _get_plot_theme(style, dpi, lang)
     outdir = joinpath(out_folder, "plots")
     prefix = id
     mkpath(outdir)
 
-    # 1. Tiempos reales desde res.grid.ts
     ts  = res.grid.ts
     t_h = ts ./ 3600.0
 
-    # 2. Geometría y bordes acumulados reales
     widths  = res.grid.widths
     xlayers = length(widths)
     zlayers = length(res.grid.depths)
@@ -236,7 +182,6 @@ function make_video(res, out_folder::AbstractString, id::AbstractString; style =
     xedges = [0.0; cumsum(collect(Float64, widths))]
     zedges = collect(Float64, res.grid.zlevels)
 
-    # 3. Cálculo de pasos y frames a partir de ts
     n_saves = size(res.T, 3)
     dt_save = length(ts) > 1 ? (ts[2] - ts[1]) : 1.0
     step    = max(1, round(Int, 3600 / dt_save))
@@ -244,7 +189,6 @@ function make_video(res, out_folder::AbstractString, id::AbstractString; style =
 
     T_min, T_max = floor(minimum(res.T)), ceil(maximum(res.T))
 
-    # 4. Formato de matriz (z, x) -> permutedims a (x, z) para Makie heatmap
     frame_matrix(i) = permutedims(res.T[:, :, i], (2, 1))
 
     T_obs     = CM.Observable(frame_matrix(first(frames)))
@@ -259,7 +203,6 @@ function make_video(res, out_folder::AbstractString, id::AbstractString; style =
         yreversed = true
     )
 
-    # 5. Dibujo directo sobre bordes reales
     hm = CM.heatmap!(ax, xedges, zedges, T_obs;
         colormap    = :thermal,
         colorrange  = (T_min, T_max),
@@ -277,27 +220,28 @@ function make_video(res, out_folder::AbstractString, id::AbstractString; style =
     @info "[INFO] MP4 animation saved to: $path"
 end
 
-function plotting(res::NamedTuple, p, experiment)
-    (; style, dpi, language) = p
 
-    plots_dict = Dict{Symbol, Any}()
 
-    if p.layer_temperatures
-        plots_dict[:soil_temperatures] = plot_temperatures(res; style = style, dpi = dpi, lang = language)
-    end
+function _get_plot_theme(style::String, dpi::Int, lang::String)
+    labels = LABELS[lang]
+    cfg = STYLES[style]
 
-    if p.heat_fluxes
-        plots_dict[:soil_heat_fluxes] = plot_heat_fluxes(res; style = style, dpi = dpi, lang = language)
-    end
+    return (
+        titlefont  = font(cfg[:titlefont_size], cfg[:titlefont_family]),
+        guidefont  = font(cfg[:guidefont_size], cfg[:guidefont_family]),
+        tickfont   = font(cfg[:tickfont_size], cfg[:tickfont_family]),
+        legendfont = font(cfg[:legendfont_size], cfg[:legendfont_family]),
+        linewidth  = cfg[:linewidth],
+        dpi        = dpi,
+        labels     = labels
+    )
+end
 
-    if p.total_energy
-        plots_dict[:soil_energy] = plot_energy(res; style = style, dpi = dpi, lang = language)
-    end
-
-    if p.temperature_animation
-        make_video(res, experiment.out_folder, experiment.id;
-                   style = style, dpi = dpi, lang = language)
-    end
-
-    return plots_dict
+function _fine_index_map(edges::AbstractVector, n_fine::Int)
+    lo, hi = first(edges), last(edges)
+    n      = length(edges) - 1
+    pix    = range(lo, hi; length = n_fine + 1)
+    mid    = (pix[1:end-1] .+ pix[2:end]) ./ 2
+    idx    = [clamp(searchsortedlast(edges, m), 1, n) for m in mid]
+    return lo, hi, idx
 end

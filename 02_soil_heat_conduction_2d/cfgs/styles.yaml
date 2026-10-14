@@ -1,0 +1,21 @@
+paper:
+  titlefont_size: 10
+  titlefont_family: "DejaVu Sans"
+  guidefont_size: 9
+  guidefont_family: "DejaVu Sans"
+  tickfont_size: 8
+  tickfont_family: "DejaVu Sans"
+  legendfont_size: 7
+  legendfont_family: "DejaVu Sans"
+  linewidth: 1.5
+
+presentation:
+  titlefont_size: 14
+  titlefont_family: "DejaVu Sans Bold"
+  guidefont_size: 12
+  guidefont_family: "DejaVu Sans"
+  tickfont_size: 10
+  tickfont_family: "DejaVu Sans"
+  legendfont_size: 9
+  legendfont_family: "DejaVu Sans"
+  linewidth: 2.5

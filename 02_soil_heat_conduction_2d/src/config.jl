@@ -1,91 +1,77 @@
-# config.jl
-
-# -------------------------------------------------------------------
-# Helpers
-# -------------------------------------------------------------------
-
-function req(d, key, section)
-    if !haskey(d, key)
-        @error "[ERROR] Falta '$key' en '$section'"
-    end
-    return d[key]
+mutable struct Config
+    experiment
+    grid
+    physics
+    initialisation
+    components
+    plotting
+    save
+    runtime
 end
 
 
-function positive(x, name)
-    if x <= 0
-        @error "[ERROR] $name debe ser > 0 (recibido: $x)"
-    end
+function Config(path::AbstractString)
 
-    return x
-end
+    cfg = YAML.load_file(path)
+    sim = cfg["simulation"]
 
-
-# -------------------------------------------------------------------
-# Experiment
-# -------------------------------------------------------------------
-
-function read_experiment(d, root)
-    id = String(req(d, "id", "experiment"))
-
-    log_every = get(d, "log_every", nothing)
-    log_every === nothing || log_every >= 1 ||
-        @error "[ERROR] experiment.log_every debe ser >= 1"
-
-    return (
-        id = id,
-        logging = Bool(req(d, "logging", "experiment")),
-        log_every = log_every,
-        out_folder = abspath(joinpath(root, "experiments", id)),
+    return Config(
+        _read_experiment(cfg["experiment"]),
+        _read_grid(sim),
+        _read_physics(sim),
+        _read_initialisation(sim),
+        _read_components(sim),
+        _read_plotting(cfg["plotting"]),
+        _read_save(cfg["save"]),
+        nothing, 
     )
 end
 
-# -------------------------------------------------------------------
-# Grid
-# -------------------------------------------------------------------
 
-function read_grid(sim)
-    g = req(sim, "grid", "simulation")
-    v = req(sim, "vertical_coordinates", "simulation") # O usa get() si r es opcional
-
+function _read_experiment(d)
     return (
-        dt = positive(Float64(req(g, "dt", "grid")), "grid.dt"),
-        L = positive(Float64(req(g, "L", "grid")), "grid.L"),
-        X = positive(Float64(req(g, "X", "grid")), "grid.X"),
-        zlayers = positive(Int(req(g, "zlayers", "grid")), "grid.zlayers"),
-        xlayers = positive(Int(req(g, "xlayers", "grid")), "grid.xlayers"),
-        run_len = positive(Int(req(g, "run_len", "grid")), "grid.run_len"), # <--- Movido aquí
-        r = positive(Float64(req(v, "r", "vertical_coordinates")), "vertical_coordinates.r"),
+        id = String(d["id"]),
+        log_every = haskey(d, "log_every") ? _positive(Int(d["log_every"]), "experiment.log_every") : nothing,
     )
 end
 
-# -------------------------------------------------------------------
-# Physics
-# -------------------------------------------------------------------
 
-function read_physics(sim)
-    d = req(sim, "physics", "simulation")
+function _read_grid(sim)
+    g = sim["grid"]
+    v = sim["vertical_coordinates"]
 
     return (
-        k = positive(Float64(req(d, "k", "physics")), "physics.k"),
-        rho = positive(Float64(req(d, "rho", "physics")), "physics.rho"),
-        cp = positive(Float64(req(d, "cp", "physics")), "physics.cp"),
+        dt = _positive(Float64(g["dt"]), "grid.dt"),
+        L = _positive(Float64(g["L"]), "grid.L"),
+        X = _positive(Float64(g["X"]), "grid.X"),
+        zlayers = _positive(Int(g["zlayers"]), "grid.zlayers"),
+        xlayers = _positive(Int(g["xlayers"]), "grid.xlayers"),
+        run_len = _positive(Int(g["run_len"]), "grid.run_len"),
+        r = _positive(Float64(v["r"]), "vertical_coordinates.r"),
     )
 end
 
-# -------------------------------------------------------------------
-# Initialisation
-# -------------------------------------------------------------------
 
-function read_initialisation(sim)
-    d = req(sim, "initialisation", "simulation")
+function _read_physics(sim)
+    d = sim["physics"]
 
-    profile = String(req(d, "synthetic_initial_conditions", "initialisation"))
+    return (
+        k = _positive(Float64(d["k"]), "physics.k"),
+        rho = _positive(Float64(d["rho"]), "physics.rho"),
+        cp = _positive(Float64(d["cp"]), "physics.cp"),
+    )
+end
+
+
+function _read_initialisation(sim)
+    d = sim["initialisation"]
+
+    profile = String(d["synthetic_initial_conditions"])
 
     profile in ("homogeneous", "horizontal_gradient", "vertical_gradient") ||
-        @error "[ERROR] Perfil inicial desconocido: '$profile'"
+        @error "[ERROR] Unknown initial temperature profile: '$profile'"
 
-    T_i = Float64(req(d, "T_i", "initialisation"))
+    T_i = Float64(d["T_i"])
 
     return (
         profile = Symbol(profile),
@@ -98,16 +84,13 @@ function read_initialisation(sim)
     )
 end
 
-# -------------------------------------------------------------------
-# Components
-# -------------------------------------------------------------------
 
-function read_components(sim)
-    d = req(sim, "components", "simulation")
+function _read_components(sim)
+    d = sim["components"]
 
     for name in keys(d)
         name in ("dry_thermodinamics", "wet_thermodinamics") ||
-            @error "[ERROR] Componente desconocido: '$name'"
+            @error "[ERROR] Unknown component: '$name'"
     end
 
     dry = get(d, "dry_thermodinamics", Dict())
@@ -116,7 +99,7 @@ function read_components(sim)
     focus = String(get(dry, "focus", "static"))
 
     focus in ("static", "dynamic") ||
-        @error "[ERROR] dry_thermodinamics.focus desconocido: '$focus'"
+        @error "[ERROR] dry_thermodinamics.focus unknown: '$focus'"
 
     return (
         dry = (
@@ -129,20 +112,17 @@ function read_components(sim)
     )
 end
 
-# -------------------------------------------------------------------
-# Plotting
-# -------------------------------------------------------------------
 
-function read_plotting(d)
+function _read_plotting(d)
     language = String(get(d, "language", "english"))
-    style = String(get(d, "style", "paper"))
+    style = String(get(d, "style", "presentation"))
     dpi = Int(get(d, "dpi", 300))
 
     language in ("english", "spanish", "catalan") ||
-        @error "[ERROR] plotting.language desconocido: '$language'"
+        @error "[ERROR] plotting.language unknown: '$language'"
 
     style in ("paper", "presentation") ||
-        @error "[ERROR] plotting.style desconocido: '$style'"
+        @error "[ERROR] plotting.style unknown: '$style'"
 
     return (
         layer_temperatures = Bool(get(d, "layer_temperatures", false)),
@@ -151,55 +131,25 @@ function read_plotting(d)
         temperature_animation = Bool(get(d, "temperature_animation", false)),
         language = language,
         style = style,
-        dpi = positive(dpi, "plotting.dpi"),
+        dpi = _positive(dpi, "plotting.dpi"),
     )
 end
 
-# -------------------------------------------------------------------
-# Save
-# -------------------------------------------------------------------
 
-function read_save(d)
+function _read_save(d)
     save_every = Int(get(d, "save_every", 1))
 
     return (
         plots = Bool(get(d, "plots", false)),
         data = Bool(get(d, "data", false)),
-        save_every = positive(save_every, "save.save_every"),
+        save_every = _positive(save_every, "save.save_every"),
     )
 end
 
-# -------------------------------------------------------------------
-# Complete configuration
-# -------------------------------------------------------------------
 
-struct Config
-    experiment
-    grid
-    physics
-    initialisation
-    components
-    plotting
-    save
-end
-
-function load_config(path::AbstractString;
-                     root::AbstractString = dirname(dirname(abspath(path))))
-
-    y = YAML.load_file(path)
-
-    experiment = req(y, "experiment", "root")
-    sim = req(y, "simulation", "root")
-    plotting = req(y, "plotting", "root")
-    save = req(y, "save", "root")
-
-    return Config(
-        read_experiment(experiment, root),
-        read_grid(sim),
-        read_physics(sim),
-        read_initialisation(sim),
-        read_components(sim),
-        read_plotting(plotting),
-        read_save(save),
-    )
+function _positive(x, name)
+    if x <= 0
+        @error "[ERROR] $name must be > 0 ($x)"
+    end
+    return x
 end

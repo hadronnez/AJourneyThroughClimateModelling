@@ -1,8 +1,7 @@
 using Logging
-
 export init_logger, close_logger
 
-# Custom logger that flushes after each message
+
 struct FlushingLogger <: AbstractLogger
     stream::IO
     min_level::LogLevel
