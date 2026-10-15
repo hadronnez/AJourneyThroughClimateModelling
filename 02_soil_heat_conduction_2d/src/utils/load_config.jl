@@ -10,19 +10,20 @@ mutable struct Config
 end
 
 
-function Config(path::AbstractString)
+function Config(cfg_dir::AbstractString)
 
-    cfg = YAML.load_file(path)
-    sim = cfg["simulation"]
+    exp_cfg  = YAML.load_file(joinpath(cfg_dir, "exp_cfg.yaml"))
+    sim      = YAML.load_file(joinpath(cfg_dir, "sim_cfg.yaml"))
+    plot_cfg = YAML.load_file(joinpath(cfg_dir, "plot_cfg.yaml"))
 
     return Config(
-        _read_experiment(cfg["experiment"]),
+        _read_experiment(exp_cfg["experiment"]),
         _read_grid(sim),
         _read_physics(sim),
         _read_initialisation(sim),
         _read_components(sim),
-        _read_plotting(cfg["plotting"]),
-        _read_save(cfg["save"]),
+        _read_plotting(plot_cfg),
+        _read_save(exp_cfg["save"]),
         nothing, 
     )
 end
@@ -117,6 +118,7 @@ function _read_plotting(d)
     language = String(get(d, "language", "english"))
     style = String(get(d, "style", "presentation"))
     dpi = Int(get(d, "dpi", 300))
+    render = get(d, "render", Dict())
 
     language in ("english", "spanish", "catalan") ||
         @error "[ERROR] plotting.language unknown: '$language'"
@@ -125,10 +127,10 @@ function _read_plotting(d)
         @error "[ERROR] plotting.style unknown: '$style'"
 
     return (
-        layer_temperatures = Bool(get(d, "layer_temperatures", false)),
-        heat_fluxes = Bool(get(d, "heat_fluxes", false)),
-        total_energy = Bool(get(d, "total_energy", false)),
-        temperature_animation = Bool(get(d, "temperature_animation", false)),
+        layer_temperatures = Bool(get(render, "layer_temperatures", false)),
+        heat_fluxes = Bool(get(render, "heat_fluxes", false)),
+        total_energy = Bool(get(render, "total_energy", false)),
+        temperature_animation = Bool(get(render, "temperature_animation", false)),
         language = language,
         style = style,
         dpi = _positive(dpi, "plotting.dpi"),

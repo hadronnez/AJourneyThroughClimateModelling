@@ -20,8 +20,8 @@ function _load_styles(filepath::String)
     )
 end
 
-const LABELS = _load_labels(joinpath(dirname(@__DIR__), "cfgs", "labels.yaml"))
-const STYLES = _load_styles(joinpath(dirname(@__DIR__), "cfgs", "styles.yaml"))
+const LABELS = _load_labels(joinpath(@__DIR__, "plot_labels.yaml"))
+const STYLES = _load_styles(joinpath(@__DIR__, "plot_styles.yaml"))
 
 
 

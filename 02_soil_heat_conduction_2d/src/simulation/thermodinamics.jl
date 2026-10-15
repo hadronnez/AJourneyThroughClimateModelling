@@ -1,4 +1,4 @@
-include("generate_ic.jl")
+include(joinpath(@__DIR__, "..", "utils", "generate_ic.jl"))
 
 # `grid` and `phys` are NamedTuples built in run.jl / build_physics (no Grid/Physics structs).
 # Array layout: time is always the LAST dimension in histories (z, x, time).
