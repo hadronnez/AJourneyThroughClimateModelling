@@ -26,23 +26,23 @@ const STYLES = _load_styles(joinpath(@__DIR__, "plot_styles.yaml"))
 
 
 function plotting(res::SimulationResults, p, experiment)
-    (; style, dpi, language) = p
+    (; style, dpi, language, render) = p
 
     plots_dict = Dict{Symbol, Any}()
 
-    if p.layer_temperatures
+    if render.layer_temperatures
         plots_dict[:soil_temperatures] = plot_temperatures(res; style = style, dpi = dpi, lang = language)
     end
 
-    if p.heat_fluxes
+    if render.heat_fluxes
         plots_dict[:soil_heat_fluxes] = plot_heat_fluxes(res; style = style, dpi = dpi, lang = language)
     end
 
-    if p.total_energy
+    if render.total_energy
         plots_dict[:soil_energy] = plot_energy(res; style = style, dpi = dpi, lang = language)
     end
 
-    if p.temperature_animation
+    if render.temperature_animation
         make_video(res, experiment.out_folder, experiment.id;
                    style = style, dpi = dpi, lang = language)
     end

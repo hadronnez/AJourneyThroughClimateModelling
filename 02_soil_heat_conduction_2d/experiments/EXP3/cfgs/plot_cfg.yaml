@@ -1,0 +1,8 @@
+language: "english"
+style: "paper"
+dpi: 500
+render:
+  total_energy: true
+  heat_fluxes: false
+  layer_temperatures: false
+  temperature_animation: true

@@ -1,53 +1,105 @@
-mutable struct Config
-    experiment
-    grid
-    physics
-    initialisation
-    components
-    plotting
-    save
-    runtime
+struct Config
+    experiment::NamedTuple      # exp_cfg.yaml  (+ out_folder)
+    simulation::NamedTuple      # sim_cfg.yaml
+    plotting::NamedTuple        # plot_cfg.yaml
 end
 
 
-function Config(cfg_dir::AbstractString)
+function Config(cfg_dir::AbstractString, out_root::AbstractString)
 
     exp_cfg  = YAML.load_file(joinpath(cfg_dir, "exp_cfg.yaml"))
     sim      = YAML.load_file(joinpath(cfg_dir, "sim_cfg.yaml"))
     plot_cfg = YAML.load_file(joinpath(cfg_dir, "plot_cfg.yaml"))
 
     return Config(
-        _read_experiment(exp_cfg["experiment"]),
-        _read_grid(sim),
-        _read_physics(sim),
-        _read_initialisation(sim),
-        _read_components(sim),
+        _read_experiment(exp_cfg, out_root),
+        _read_simulation(sim),
         _read_plotting(plot_cfg),
-        _read_save(exp_cfg["save"]),
-        nothing, 
     )
 end
 
 
-function _read_experiment(d)
+function _read_experiment(d, out_root)
+    e  = d["experiment"]
+    id = String(e["id"])
+
     return (
-        id = String(d["id"]),
-        log_every = haskey(d, "log_every") ? _positive(Int(d["log_every"]), "experiment.log_every") : nothing,
+        id = id,
+        log_every = haskey(e, "log_every") ? _positive(Int(e["log_every"]), "experiment.log_every") : nothing,
+        save = _read_save(d["save"]),
+        out_folder = joinpath(out_root, id),
+    )
+end
+
+
+function _read_save(d)
+    save_every = Int(get(d, "save_every", 1))
+
+    return (
+        plots = Bool(get(d, "plots", false)),
+        data = Bool(get(d, "data", false)),
+        save_every = _positive(save_every, "save.save_every"),
+    )
+end
+
+
+function _read_simulation(sim)
+    return (
+        components = _read_components(sim),
+        grid = _read_grid(sim),
+        vertical_coordinates = _read_vertical_coordinates(sim),
+        physics = _read_physics(sim),
+        initialisation = _read_initialisation(sim),
+    )
+end
+
+
+function _read_components(sim)
+    d = sim["components"]
+
+    for name in keys(d)
+        name in ("dry_thermodinamics", "wet_thermodinamics") ||
+            @error "[ERROR] Unknown component: '$name'"
+    end
+
+    dry = get(d, "dry_thermodinamics", Dict())
+    wet = get(d, "wet_thermodinamics", Dict())
+
+    focus = String(get(dry, "focus", "static"))
+
+    focus in ("static", "dynamic") ||
+        @error "[ERROR] dry_thermodinamics.focus unknown: '$focus'"
+
+    return (
+        dry_thermodinamics = (
+            active = Bool(get(dry, "active", false)),
+            focus = Symbol(focus),
+        ),
+        wet_thermodinamics = (
+            active = Bool(get(wet, "active", false)),
+        ),
     )
 end
 
 
 function _read_grid(sim)
     g = sim["grid"]
-    v = sim["vertical_coordinates"]
 
     return (
-        dt = _positive(Float64(g["dt"]), "grid.dt"),
         L = _positive(Float64(g["L"]), "grid.L"),
         X = _positive(Float64(g["X"]), "grid.X"),
         zlayers = _positive(Int(g["zlayers"]), "grid.zlayers"),
         xlayers = _positive(Int(g["xlayers"]), "grid.xlayers"),
+        dt = _positive(Float64(g["dt"]), "grid.dt"),
         run_len = _positive(Int(g["run_len"]), "grid.run_len"),
+    )
+end
+
+
+function _read_vertical_coordinates(sim)
+    v = sim["vertical_coordinates"]
+
+    return (
         r = _positive(Float64(v["r"]), "vertical_coordinates.r"),
     )
 end
@@ -75,41 +127,13 @@ function _read_initialisation(sim)
     T_i = Float64(d["T_i"])
 
     return (
-        profile = Symbol(profile),
-        ic_path = String(get(d, "initial_conditions_path", "ic/ic.nc")),
-        T_i = T_i,
+        initial_conditions_path = String(get(d, "initial_conditions_path", "ic/ic.nc")),
+        synthetic_initial_conditions = Symbol(profile),
         T_top = Float64(get(d, "T_top", T_i + 5)),
         T_bottom = Float64(get(d, "T_bottom", T_i - 5)),
+        T_i = T_i,
         T_top_period = Float64(get(d, "T_top_period", NaN)),
         T_top_amplitude = Float64(get(d, "T_top_amplitude", NaN)),
-    )
-end
-
-
-function _read_components(sim)
-    d = sim["components"]
-
-    for name in keys(d)
-        name in ("dry_thermodinamics", "wet_thermodinamics") ||
-            @error "[ERROR] Unknown component: '$name'"
-    end
-
-    dry = get(d, "dry_thermodinamics", Dict())
-    wet = get(d, "wet_thermodinamics", Dict())
-
-    focus = String(get(dry, "focus", "static"))
-
-    focus in ("static", "dynamic") ||
-        @error "[ERROR] dry_thermodinamics.focus unknown: '$focus'"
-
-    return (
-        dry = (
-            active = Bool(get(dry, "active", false)),
-            focus = Symbol(focus),
-        ),
-        wet = (
-            active = Bool(get(wet, "active", false)),
-        ),
     )
 end
 
@@ -127,24 +151,15 @@ function _read_plotting(d)
         @error "[ERROR] plotting.style unknown: '$style'"
 
     return (
-        layer_temperatures = Bool(get(render, "layer_temperatures", false)),
-        heat_fluxes = Bool(get(render, "heat_fluxes", false)),
-        total_energy = Bool(get(render, "total_energy", false)),
-        temperature_animation = Bool(get(render, "temperature_animation", false)),
         language = language,
         style = style,
         dpi = _positive(dpi, "plotting.dpi"),
-    )
-end
-
-
-function _read_save(d)
-    save_every = Int(get(d, "save_every", 1))
-
-    return (
-        plots = Bool(get(d, "plots", false)),
-        data = Bool(get(d, "data", false)),
-        save_every = _positive(save_every, "save.save_every"),
+        render = (
+            total_energy = Bool(get(render, "total_energy", false)),
+            heat_fluxes = Bool(get(render, "heat_fluxes", false)),
+            layer_temperatures = Bool(get(render, "layer_temperatures", false)),
+            temperature_animation = Bool(get(render, "temperature_animation", false)),
+        ),
     )
 end
 

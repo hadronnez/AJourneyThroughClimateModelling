@@ -1,12 +1,9 @@
 include(joinpath(@__DIR__, "..", "utils", "generate_ic.jl"))
 
-# `grid` and `phys` are NamedTuples built in run.jl / build_physics (no Grid/Physics structs).
-# Array layout: time is always the LAST dimension in histories (z, x, time).
-
 """
     build_physics(p, grid) -> NamedTuple
 
-Extends the physical parameters (`cfg.physics`) with the per-layer quantities
+Extends the physical parameters (`cfg.simulation.physics`) with the per-layer quantities
 needed by `step!` and `record!`, for a 2D cell of size dz[i] × dx (per unit length in y):
 
 - `C`         : heat capacity of each layer's cell [J/K]   (vector, length zlayers)
@@ -38,8 +35,8 @@ end
 Boundary temperature series of length `grid.n_ts`, at times t_i = i·dt
 (the same times used for `res.grid.ts` in run.jl).
 
-- `init`  : `cfg.initialisation`
-- `focus` : `cfg.components.dry.focus` (`:static` or `:dynamic`). If omitted, it is
+- `init`  : `cfg.simulation.initialisation`
+- `focus` : `cfg.simulation.components.dry_thermodinamics.focus` (`:static` or `:dynamic`). If omitted, it is
             inferred: `:dynamic` when both `T_top_amplitude` and `T_top_period` are set.
 """
 function boundary_forcing(init, grid, focus::Union{Symbol,Nothing} = nothing)
@@ -67,7 +64,7 @@ end
 Initial state; T comes from the synthetic profile / `ic.nc` (see generate_ic.jl).
 """
 function init_state(cfg, grid)
-    T  = generate_ic_nc(cfg.grid, cfg.initialisation, cfg.experiment.out_folder)
+    T  = generate_ic_nc(cfg.simulation.grid, cfg.simulation.initialisation, cfg.experiment.out_folder)
     qz = zeros(grid.zlayers + 1, grid.xlayers)
     qx = zeros(grid.zlayers, grid.xlayers + 1)
     return (T = T, qz = qz, qx = qx)

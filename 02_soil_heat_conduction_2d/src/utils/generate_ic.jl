@@ -4,23 +4,23 @@ using Dates
 """
     generate_ic_nc(grid, init, out_folder) -> Matrix{Float64}
 
-Loads the initial temperature field from `init.ic_path` if it exists and matches
-the grid; otherwise generates it from `init.profile` and saves it to NetCDF.
+Loads the initial temperature field from `init.initial_conditions_path` if it exists and matches
+the grid; otherwise generates it from `init.synthetic_initial_conditions` and saves it to NetCDF.
 
-- `grid`       : `cfg.grid`           (needs `zlayers`, `xlayers`)
-- `init`       : `cfg.initialisation` (needs `profile::Symbol`, `ic_path`, `T_i`, `T_top`, `T_bottom`)
+- `grid`       : `cfg.simulation.grid`           (needs `zlayers`, `xlayers`)
+- `init`       : `cfg.simulation.initialisation` (needs `synthetic_initial_conditions::Symbol`, `initial_conditions_path`, `T_i`, `T_top`, `T_bottom`)
 - `out_folder` : `cfg.experiment.out_folder`
 
-A relative `ic_path` is resolved inside `out_folder`.
+A relative `initial_conditions_path` is resolved inside `out_folder`.
 """
 function generate_ic_nc(grid, init, out_folder::AbstractString)
     (; zlayers, xlayers) = grid
     (; T_i, T_top, T_bottom) = init
-    profile = Symbol(init.profile)                       # acepta String o Symbol
-    T_grad  = hasproperty(init, :T_gradient) ? init.T_gradient : 10.0   # ΔT izq→der = 2·T_grad
+    profile = Symbol(init.synthetic_initial_conditions)
+    T_grad  = hasproperty(init, :T_gradient) ? init.T_gradient : 10.0  
     signature = "profile=$(profile);T_i=$(T_i);T_top=$(T_top);T_bottom=$(T_bottom);T_grad=$(T_grad);z=$(zlayers);x=$(xlayers)"
 
-    ic_path = isabspath(init.ic_path) ? init.ic_path : joinpath(out_folder, init.ic_path)
+    ic_path = isabspath(init.initial_conditions_path) ? init.initial_conditions_path : joinpath(out_folder, init.initial_conditions_path)
 
     if isfile(ic_path)
         try

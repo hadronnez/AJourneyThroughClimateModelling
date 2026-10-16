@@ -2,10 +2,12 @@ using Plots
 using NCDatasets
 using Dates
 using YAML
+using OrderedCollections
 
-function save(res::SimulationResults, plots::Dict, scfg, experiment)
+function save(res::SimulationResults, plots::Dict, experiment)
     out_folder = experiment.out_folder
     id         = experiment.id
+    scfg       = experiment.save
 
     if scfg.data
         @info "[INFO] $(now()) Saving data to NetCDF format..."
@@ -78,12 +80,23 @@ end
 
 function save(cfg::Config)
     @info "[INFO] $(now()) Saving experiment configuration..."
-    path = joinpath(cfg.experiment.out_folder, "$(cfg.experiment.id)_config.yaml")
-    sections = Dict(string(f) => _to_yaml(getfield(cfg, f)) for f in fieldnames(Config) if f !== :runtime)
-    YAML.write_file(path, sections)
-    @info "[INFO] $(now()) Configuration successfully saved to: $path"
+    cfg_dir = joinpath(cfg.experiment.out_folder, "cfgs")
+    mkpath(cfg_dir)
+
+    exp_cfg = OrderedDict(
+        "experiment" => _to_yaml((id = cfg.experiment.id, log_every = cfg.experiment.log_every)),
+        "save"       => _to_yaml(cfg.experiment.save),
+    )
+
+    YAML.write_file(joinpath(cfg_dir, "exp_cfg.yaml"),  exp_cfg)
+    YAML.write_file(joinpath(cfg_dir, "sim_cfg.yaml"),  _to_yaml(cfg.simulation))
+    YAML.write_file(joinpath(cfg_dir, "plot_cfg.yaml"), _to_yaml(cfg.plotting))
+    @info "[INFO] $(now()) Configuration successfully saved to: $cfg_dir"
 end
 
-_to_yaml(x::NamedTuple) = Dict(string(k) => _to_yaml(v) for (k, v) in pairs(x))
+# NamedTuple -> OrderedDict (same key order as the YAML). `nothing` and `NaN` mean "absent" in the input, so they are omitted.
+_to_yaml(x::NamedTuple) = OrderedDict(string(k) => _to_yaml(v) for (k, v) in pairs(x) if !_is_absent(v))
 _to_yaml(x::Symbol) = string(x)
 _to_yaml(x) = x
+
+_is_absent(x) = isnothing(x) || (x isa AbstractFloat && isnan(x))

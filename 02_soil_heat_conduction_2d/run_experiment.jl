@@ -14,11 +14,9 @@ end
 
 function run_experiment(cfg::Config)
     @info "[INFO] $(now()) Starting experiment: $(cfg.experiment.id)"
-    _experiment_setup!(cfg)
-    _experiment_cycle!(cfg)
-    res = _experiment_results(cfg)
-    _save_experiment_outputs(res, cfg)
     save(cfg)
+    res = run_simulation(cfg)
+    _save_experiment_outputs(res, cfg)
     @info "[INFO] $(now()) Experiment completed successfully"
     return res
 end
@@ -27,11 +25,10 @@ end
 #Main 
 
 
-cfg = Config(joinpath(ROOT, "cfgs"))
-out_folder = joinpath(ROOT, "experiments", cfg.experiment.id)
-cfg.experiment = merge(cfg.experiment, (; out_folder))
+cfg = Config(joinpath(ROOT, "cfgs"), joinpath(ROOT, "experiments"))
+out_folder = cfg.experiment.out_folder
 
-for sub in ("log", "data", "ic", "plots")
+for sub in ("cfgs", "log", "data", "ic", "plots")
     mkpath(joinpath(out_folder, sub))
 end
 

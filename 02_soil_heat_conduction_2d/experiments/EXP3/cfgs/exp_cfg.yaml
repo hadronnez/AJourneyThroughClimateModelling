@@ -1,0 +1,6 @@
+experiment:
+  id: "EXP3"
+save:
+  plots: true
+  data: true
+  save_every: 1
