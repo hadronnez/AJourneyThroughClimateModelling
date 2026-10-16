@@ -94,7 +94,6 @@ function save(cfg::Config)
     @info "[INFO] $(now()) Configuration successfully saved to: $cfg_dir"
 end
 
-# NamedTuple -> OrderedDict (same key order as the YAML). `nothing` and `NaN` mean "absent" in the input, so they are omitted.
 _to_yaml(x::NamedTuple) = OrderedDict(string(k) => _to_yaml(v) for (k, v) in pairs(x) if !_is_absent(v))
 _to_yaml(x::Symbol) = string(x)
 _to_yaml(x) = x

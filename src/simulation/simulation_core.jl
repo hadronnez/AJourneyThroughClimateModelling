@@ -1,6 +1,5 @@
 include("thermodinamics.jl")
 
-# Parameters derived from `Config` (pure function of it). Immutable.
 struct Derived
     grid::NamedTuple
     phys::NamedTuple
